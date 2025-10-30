@@ -40,6 +40,15 @@
   .wall{background:#111}
   .start{background:#22c55e}
   .finish{background:#f59e0b}
+    /* Add or keep these styles (tweak to taste) */
+  .hover-grid{display:grid}
+  .hcell{width:24px;height:24px;border-radius:6px;border:1px solid #000;background:#0b1220}
+  .hcell.wall{background:#7f1d1d}
+  .hcell.start{background:#22c55e}
+  .hcell.finish{background:#f59e0b}
+  .hcell.path{background:#1e293b}       /* trail */
+  .hp-flash{animation:hpflash .3s linear 1}
+  @keyframes hpflash{from{filter:brightness(1.6)}to{filter:brightness(1)}}
 </style>
 </head>
 <body>
@@ -121,17 +130,14 @@
   </section>
 
   <!-- 5) Hover Path -->
-  <section class="card" id="ex15">
-    <header><h2>5) Hover Path</h2></header>
-    <div class="body">
-      <div class="meta">Move the mouse from start to finish without touching walls.</div>
-      <span class="tag">mouseenter</span><span class="tag">collision</span>
-      <div class="hover-grid" id="ex15-grid"></div>
-      <div class="row" style="margin-top:6px">Status: <b id="ex15-status">Ready</b></div>
-      <p class="note"><strong>How it works:</strong> A grid marks start, finish, and walls. Hovering a wall fails the attempt; reaching finish wins.</p>
-      <p class="small"><strong>Learning outcomes:</strong> mouseover/enter events, data attributes, simple path rules.</p>
-    </div>
-  </section>
+<section class="card" id="ex5">
+  <header><h2>5) Hover Path</h2></header>
+  <div class="body">
+    <div class="meta">Move the mouse from Start (green) to Finish (gold) without touching red walls.</div>
+    <div id="hp-grid" class="hover-grid" style="grid-template-columns:repeat(8,24px);gap:6px"></div>
+    <div class="row" style="margin-top:6px">Status: <b id="hp-status">Hover the green square to begin</b></div>
+  </div>
+</section>
 
   <!-- 6) Key Reaction -->
   <section class="card" id="ex16">
@@ -323,45 +329,95 @@ function shuffle(a){ return a.map(v=>[Math.random(),v]).sort((x,y)=>x[0]-y[0]).m
 })();
 
 /* 15) Hover Path */
+
 (function(){
-  const grid=$('#ex15-grid'), status=$('#ex15-status');
+  const gridEl = document.querySelector('#hp-grid');
+  const statusEl = document.querySelector('#hp-status');
+
+  // Layout (8 x 5 = 40 cells). 'S' = start, 'F' = finish, 1 = wall, 0 = empty
   const layout = [
-    'S',0,1,0,0,0,1,0,
-     0,1,1,0,1,0,0,0,
-     0,0,0,0,1,0,1,0,
-     1,1,0,1,0,0,1,0,
-     0,0,0,0,0,1,0,'F'
-  ]; // 5 rows x 8 cols
-  const w=8;
+    'S',0, 0, 0, 1, 0, 0, 0,
+     1 ,1, 0, 0, 1, 0, 1, 0,
+     0 ,0, 0, 1, 0, 0, 1, 0,
+     0 ,1, 0, 0, 0, 1, 0, 0,
+     0 ,0, 0, 1,'F',0, 0, 0
+  ];
+
+  const cells = [];
+  let playing = false;
 
   function build(){
-    grid.innerHTML='';
+    gridEl.innerHTML = '';
+    cells.length = 0;
     layout.forEach((v,i)=>{
-      const d=document.createElement('div'); d.className='hcell';
-      if(v===1){ d.classList.add('wall'); }
-      if(v==='S'){ d.classList.add('start'); d.title='Start'; }
-      if(v==='F'){ d.classList.add('finish'); d.title='Finish'; }
-      d.dataset.i=i;
-      grid.appendChild(d);
+      const d = document.createElement('div');
+      d.className = 'hcell';
+      if (v === 1) d.classList.add('wall');
+      if (v === 'S') d.classList.add('start');
+      if (v === 'F') d.classList.add('finish');
+      d.dataset.type = (v===1?'wall': v==='S'?'start': v==='F'?'finish':'empty');
+      gridEl.appendChild(d);
+      cells.push(d);
     });
+    statusEl.textContent = 'Hover the green square to begin';
+    cells.forEach(c=>c.classList.remove('path'));
+    playing = false;
   }
 
-  let started=false, failed=false;
-  grid.addEventListener('mouseenter', e=>{
-    if(e.target.classList.contains('start')){ started=true; failed=false; status.textContent='Go!'; }
-  }, true);
+  function lose(reason='You hit a wall!'){
+    playing = false;
+    statusEl.textContent = `💥 ${reason} (move over Start to try again)`;
+    gridEl.classList.add('hp-flash');
+    setTimeout(()=>gridEl.classList.remove('hp-flash'), 300);
+  }
 
-  grid.addEventListener('mouseenter', e=>{
-    const el=e.target;
-    if(!el.classList.contains('hcell')) return;
-    if(!started) return;
-    if(el.classList.contains('wall')){ failed=true; status.textContent='Hit a wall!'; started=false; }
-    if(el.classList.contains('finish') && !failed){ status.textContent='You win!'; started=false; }
-  }, true);
+  function win(){
+    playing = false;
+    statusEl.textContent = '🎉 You made it! Great job!';
+  }
+
+  // Use mouseover (bubbles) so the parent can listen for child entry
+  gridEl.addEventListener('mouseover', (e)=>{
+    const cell = e.target.closest('.hcell');
+    if (!cell || !gridEl.contains(cell)) return;
+
+    const t = cell.dataset.type;
+
+    // Start: arm the run and clear old trail
+    if (!playing && t === 'start') {
+      playing = true;
+      statusEl.textContent = 'Go! Move carefully to the Finish…';
+      cells.forEach(c=>c.classList.remove('path'));
+      return;
+    }
+
+    if (!playing) return; // not armed yet
+
+    // Collision checks while playing
+    if (t === 'wall') {
+      lose();
+      return;
+    }
+    if (t === 'finish') {
+      win();
+      return;
+    }
+
+    // Paint a trail on safe cells
+    if (t === 'empty') {
+      cell.classList.add('path');
+    }
+  });
+
+  // Leaving the maze counts as a fail if mid-run
+  gridEl.addEventListener('mouseleave', ()=>{
+    if (playing) lose('You left the maze!');
+  });
 
   build();
-  window._ex15 = {grid,status};
 })();
+
+
 
 /* 16) Key Reaction */
 (function(){
